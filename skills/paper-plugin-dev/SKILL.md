@@ -628,8 +628,7 @@ sword.setData(DataComponentTypes.LORE, ItemLore.lore()
 sword.setData(DataComponentTypes.ENCHANTMENTS, ItemEnchantments.itemEnchantments()
     .add(Enchantment.SHARPNESS, 5)
     .add(Enchantment.UNBREAKING, 3)
-    .showInTooltip(true)
-    .build());
+    .build()); // Tooltip visibility is no longer on the builder: use TOOLTIP_DISPLAY (hiddenComponents)
 sword.setData(DataComponentTypes.RARITY, ItemRarity.EPIC);
 sword.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true); // Glint
 sword.setData(DataComponentTypes.MAX_DAMAGE, 2000);
@@ -662,8 +661,8 @@ book.setData(DataComponentTypes.WRITTEN_BOOK_CONTENT,
 **Important DataComponentTypes:**
 `CUSTOM_NAME`, `LORE`, `ENCHANTMENTS`, `DAMAGE`, `MAX_DAMAGE`, `MAX_STACK_SIZE`,
 `RARITY`, `UNBREAKABLE`, `CUSTOM_MODEL_DATA`, `DYED_COLOR`, `TOOL`, `FOOD`,
-`POTION_CONTENTS`, `ATTRIBUTE_MODIFIERS`, `ENCHANTMENT_GLINT_OVERRIDE`, `FIRE_RESISTANT`,
-`HIDE_TOOLTIP`, `WRITTEN_BOOK_CONTENT`, `EQUIPPABLE`, `GLIDER`, `CONTAINER`,
+`POTION_CONTENTS`, `ATTRIBUTE_MODIFIERS`, `ENCHANTMENT_GLINT_OVERRIDE`, `DAMAGE_RESISTANT` (was `FIRE_RESISTANT`),
+`TOOLTIP_DISPLAY` (was `HIDE_TOOLTIP`), `ITEM_MODEL`, `ITEM_NAME`, `REPAIRABLE`, `ENCHANTABLE`, `WRITTEN_BOOK_CONTENT`, `EQUIPPABLE`, `GLIDER`, `CONTAINER`,
 `BANNER_PATTERNS`, `CHARGED_PROJECTILES`, `PROFILE` (skull), `CONSUMABLE`, `USE_COOLDOWN`
 
 ---
@@ -1247,6 +1246,36 @@ Bukkit.addRecipe(smithing);
 Bukkit.removeRecipe(key);
 ```
 
+### 15.1 Smithing with custom (PDC-tagged) items — verified on Paper 26.3
+
+Pattern for "custom template + armor → custom result": register a recipe so the table accepts
+the inputs, then build the real result in `PrepareSmithingEvent`.
+
+```java
+// Template matched by PDC, not material. predicateChoice becomes an NMS Ingredient built from the
+// example stack plus a predicate; Bukkit.addRecipe re-runs RecipeManager.finalizeRecipeLoading, so the
+// smithing slots' accepted-item sets (RecipePropertySet) include the example's material.
+Bukkit.addRecipe(new SmithingTransformRecipe(key,
+    new ItemStack(Material.DIAMOND_BOOTS),                    // placeholder result
+    RecipeChoice.predicateChoice(this::isMyTemplate, templateExample),
+    new RecipeChoice.MaterialChoice(armorMaterials),
+    RecipeChoice.empty(),                                     // empty addition slot is allowed
+    false));                                                  // don't copy data components
+
+@EventHandler(priority = EventPriority.HIGH)
+public void onPrepare(PrepareSmithingEvent e) {
+    SmithingInventory inv = e.getInventory();
+    if (!isMyTemplate(inv.getInputTemplate())) return;
+    ItemStack base = inv.getInputEquipment();
+    e.setResult(base == null ? null : buildResult(base.asOne())); // null = no result
+}
+```
+
+- `PrepareSmithingEvent` fires whether or not a recipe matched, but registering a recipe is what makes
+  the table accept the items and lets the result be taken.
+- Vanilla netherite upgrades copy PDC onto the result: refresh the name/lore there too.
+- Recipes added after players join aren't in their recipe book; call `player.discoverRecipes(keys)` on join.
+
 ---
 
 ## 16. REGISTRIES (1.21.2+, Experimental)
@@ -1475,6 +1504,10 @@ public record DatabaseConfig(String type, String host, int port, String name, St
 | Command tab-complete not working | Old Bukkit command system | Switch to Brigadier API |
 | `api-version` missing | Not specified in plugin.yml | Add `api-version: '26.3'`, otherwise legacy warning |
 | Config special characters broken | Encoding issue | `filteringCharset = "UTF-8"` in Gradle, config files as UTF-8 |
+| Custom item can't be made with `/give ns:item` | Plugins can't register item types; custom items are vanilla items + PDC/components | Provide your own Brigadier give command (see §48) |
+| Fake blocks via `sendBlockChange` let players fall through after a while | Any server resend of the real block reaches the client; if it lands mid-tick the player slips in and the fake no longer applies | Don't fake collision-critical blocks; use a real vanilla mechanic (§48.2) or real block changes |
+| Custom item loses its data in a crafting grid | Vanilla `repair_item` recipe (two same items) builds a fresh stack | Guard `PrepareItemCraftEvent`/`CrafterCraftEvent`; dye recipes (`minecraft:<item>_dyed`) copy data and are safe |
+| `TeleportFlag.Relative.X/Y/Z/YAW/PITCH` deprecation warnings | Marked for removal in 26.x | Use plain `teleport(location, cause)`; the location's yaw/pitch is applied |
 
 ---
 
@@ -1813,8 +1846,7 @@ boots.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS,
                 AttributeModifier.Operation.ADD_NUMBER
             ),
             EquipmentSlotGroup.FEET)
-        .showInTooltip(true)
-        .build()
+        .build() // Hide from tooltip via DataComponentTypes.TOOLTIP_DISPLAY, not the builder
 );
 
 // Operation types:
@@ -2532,6 +2564,76 @@ public void onGrimFlag(FlagEvent event) {
 // - Apply cooldown after teleport/velocity events
 // - Handle edge cases: elytra, riptide, slime block, piston, etc.
 ```
+
+---
+
+## 48. CUSTOM ITEMS ON VANILLA BASES (verified on Paper 26.3)
+
+Paper plugins **cannot add item types** (the client has a fixed item list; only Fabric/NeoForge mods with
+a client mod can). Datapacks can't either. A custom item is a vanilla item + data components + a PDC id.
+
+**Why this is fine:** PDC reads are cheap; nothing in the world changes on install; on uninstall items
+simply become their vanilla base (keeping name/lore), and reinstalling restores them because the PDC
+survives. Registered modded items, by contrast, vanish when the mod is removed.
+
+### 48.1 Identity and looks
+
+```java
+ItemStack item = ItemStack.of(Material.PRISMARINE_CRYSTALS);      // pick a base with few vanilla uses
+item.setData(DataComponentTypes.ITEM_MODEL, Material.RAW_GOLD.getKey()); // look like another item
+item.setData(DataComponentTypes.ITEM_NAME, Component.text("Arkenstone"));
+item.setData(DataComponentTypes.CUSTOM_MODEL_DATA,                  // hook for a resource pack later
+    CustomModelData.customModelData().addString("arkenstone").build());
+item.editPersistentDataContainer(pdc -> pdc.set(ITEM_KEY, PersistentDataType.STRING, "arkenstone"));
+```
+
+- Identify items by PDC only, never by name/lore, so presentation can change freely.
+- Guard vanilla recipes that would consume or strip the item (§23): `PrepareItemCraftEvent`,
+  `CrafterCraftEvent`, and `PrepareAnvilEvent` (same-material combining = cheap repairs).
+- Vanilla `/give` can't produce it; ship a give command:
+
+```java
+Commands.literal("give")
+    .requires(s -> s.getSender().hasPermission("myplugin.give"))   // declare it in paper-plugin.yml, default: op
+    .then(Commands.argument("targets", ArgumentTypes.players())
+        .then(Commands.argument("item", StringArgumentType.word())
+            .suggests((ctx, b) -> { ITEMS.keySet().stream().filter(k -> k.startsWith(b.getRemainingLowerCase())).forEach(b::suggest); return b.buildFuture(); })
+            .executes(ctx -> {
+                List<Player> players = ctx.getArgument("targets", PlayerSelectorArgumentResolver.class).resolve(ctx.getSource());
+                players.forEach(p -> p.give(ITEMS.get(StringArgumentType.getString(ctx, "item")).get())); // drops overflow
+                return players.size();
+            })));
+```
+
+### 48.2 Borrowing a hard-coded vanilla behavior
+
+Some mechanics check the exact item, server **and** client side, e.g. powder-snow walking is
+`getItemBySlot(FEET).is(Items.LEATHER_BOOTS)` and freeze immunity is the `freeze_immune_wearables` tag.
+Faking them (client block changes, etc.) desyncs. Instead make the item that base and copy the stats you
+want from the "real" item's defaults:
+
+```java
+ItemStack boots = diamondBoots.withType(Material.LEATHER_BOOTS);  // keeps the component patch
+                                                                  // (enchants, trim, damage, name)
+for (var type : List.of(DataComponentTypes.ATTRIBUTE_MODIFIERS, DataComponentTypes.MAX_DAMAGE,
+        DataComponentTypes.ENCHANTABLE, DataComponentTypes.REPAIRABLE, DataComponentTypes.DAMAGE_RESISTANT)) {
+    copyDefault(boots, Material.DIAMOND_BOOTS, type); // getDefaultData → setData, or unsetData if absent
+}
+boots.setData(DataComponentTypes.DYED_COLOR, DyedItemColor.dyedItemColor(Color.fromRGB(0x3B2A20)));
+// Store the tier in PDC: the material no longer tells you diamond vs netherite.
+```
+
+Consequences to handle: vanilla's netherite upgrade only accepts the real diamond item, so register
+your own smithing upgrade (§15.1); dyeing works and keeps data; the item's `EQUIPPABLE` still renders
+the base's armor model unless you change its `assetId`.
+
+### 48.3 Testing and investigating
+
+- `run-paper` can pull dependency plugins: `runServer { downloadPlugins { modrinth("origins-reborn", "2.10.11") } }`.
+- Console smoke test without a client:
+  `(sleep 70; echo "mycmd"; sleep 2; echo stop) | timeout 200 ./gradlew --console=plain runServer | grep -iE 'myplugin|error|exception'`
+- To check what vanilla/Paper really does, unzip `run/versions/<ver>/paper-<ver>.jar` (mojang-mapped)
+  and read bytecode with `javap -p -c -cp . net.minecraft.world.inventory.SmithingMenu`.
 
 ---
 
