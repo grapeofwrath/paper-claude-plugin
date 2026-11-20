@@ -1,10 +1,10 @@
 # Paper Plugin Dev
 
-A comprehensive **Claude Code plugin** that gives Claude deep knowledge of the Minecraft Paper API, Java 21 patterns, and server internals — so it can write production-quality Paper plugins right out of the box.
+A comprehensive **Claude Code plugin** that gives Claude deep knowledge of the Minecraft Paper API, Java 25 patterns, and server internals — so it can write production-quality Paper plugins right out of the box.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Paper 1.21.x](https://img.shields.io/badge/Paper-1.21.x-blue.svg)](https://papermc.io)
-[![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
+[![Paper 26.3](https://img.shields.io/badge/Paper-26.3-blue.svg)](https://papermc.io)
+[![Java 25](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/projects/jdk/25/)
 
 **[View Website](https://atomgameraga.github.io/Paper-ClaudePlugin/)**
 
@@ -12,7 +12,7 @@ A comprehensive **Claude Code plugin** that gives Claude deep knowledge of the M
 
 ## What Is This?
 
-Paper Plugin Dev is a Claude Code plugin that equips Claude with a curated 2,500+ line reference covering 47 major sections of the Paper API. When installed, Claude stops guessing at deprecated APIs and instead uses correct, modern patterns for Paper 1.21.x and Java 21.
+Paper Plugin Dev is a Claude Code plugin that equips Claude with a curated 2,500+ line reference covering 47 major sections of the Paper API. When installed, Claude stops guessing at deprecated APIs and instead uses correct, modern patterns for Paper 26.3 and Java 25.
 
 ## Features
 
@@ -47,7 +47,7 @@ Once installed, simply ask Claude to build a Paper plugin. The skill activates a
 You: Create a Paper plugin that adds custom enchantments with the Registry API
 ```
 
-Claude will use correct Java 21 syntax, modern Paper 1.21.x APIs, and production-ready patterns.
+Claude will use correct Java 25 syntax, modern Paper 26.3 APIs, and production-ready patterns.
 
 ## Plugin Structure
 

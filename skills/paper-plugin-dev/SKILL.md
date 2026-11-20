@@ -1,7 +1,7 @@
 ---
 name: paper-plugin-dev
 description: >
-  Minecraft Paper plugin development skill for Java 21 and Paper 1.21.x. Use for: plugin coding,
+  Minecraft Paper plugin development skill for Java 25 and Paper 26.3 (26.x). Use for: plugin coding,
   Paper/Bukkit/Spigot API, event handling, Brigadier commands, Adventure/MiniMessage, Data Component
   API, PDC, entity/block/item manipulation, inventory GUIs, scheduler/async tasks, packet handling,
   NMS access, paperweight-userdev, plugin.yml/paper-plugin.yml, Gradle/Maven setup,
@@ -10,10 +10,10 @@ description: >
   Minecraft, server mod, SMP, or any Java+Minecraft development context.
 ---
 
-# Minecraft Paper Plugin Development — Java 21 & Paper 1.21.x
+# Minecraft Paper Plugin Development — Java 25 & Paper 26.3
 
 This skill is a comprehensive reference and rule set that enables Claude to write
-professional-quality Java 21 plugins for Minecraft Paper servers.
+professional-quality Java 25 plugins for Minecraft Paper servers.
 
 ---
 
@@ -36,7 +36,7 @@ plugins {
     id("com.gradleup.shadow") version "8.3.0"            // Fat JAR (shade)
     id("xyz.jpenilla.run-paper") version "2.3.1"          // Test server
     // If NMS is needed:
-    // id("io.papermc.paperweight.userdev") version "2.0.0-beta.19"
+    // id("io.papermc.paperweight.userdev") version "2.0.0-beta.24"
 }
 
 group = "com.example"
@@ -48,14 +48,14 @@ repositories {
 }
 
 dependencies {
-    // API only:
-    compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
-    // If NMS is needed, use instead of API:
-    // paperweight.paperDevBundle("1.21.4-R0.1-SNAPSHOT")
+    // API only (latest 26.3 build; pin with e.g. "26.3.build.252-stable"):
+    compileOnly("io.papermc.paper:paper-api:26.3.build.+")
+    // If NMS is needed, use INSTEAD of paper-api (dev bundle includes the API):
+    // paperweight.paperDevBundle("26.3.build.+")
 }
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
 }
 
 tasks.processResources {
@@ -79,7 +79,8 @@ tasks.processResources {
     <dependency>
         <groupId>io.papermc.paper</groupId>
         <artifactId>paper-api</artifactId>
-        <version>1.21.4-R0.1-SNAPSHOT</version>
+        <!-- Latest 26.3 build; or pin a specific one: 26.3.build.252-stable -->
+        <version>[26.3.build,)</version>
         <scope>provided</scope>
     </dependency>
 </dependencies>
@@ -90,7 +91,7 @@ tasks.processResources {
             <artifactId>maven-compiler-plugin</artifactId>
             <version>3.13.0</version>
             <configuration>
-                <release>21</release>
+                <release>25</release>
             </configuration>
         </plugin>
         <plugin>
@@ -102,14 +103,21 @@ tasks.processResources {
 </build>
 ```
 
-### 1.3 Important Java 21 Features (Use in Plugins!)
+### 1.3 Important Java 25 Features (Use in Plugins!)
+
+Paper 26.x requires **Java 25**. Prefer modern language features:
 
 - **Record classes**: For DTO/config data structures `public record PlayerData(UUID uuid, int level) {}`
 - **Sealed classes**: `sealed interface Reward permits CoinReward, ItemReward {}`
-- **Pattern matching**: `if (entity instanceof Player player) { ... }`
+- **Pattern matching** (incl. record patterns): `if (entity instanceof Player player) { ... }`, `if (obj instanceof PlayerData(var id, var lvl)) { ... }`
 - **Switch expressions**: `var msg = switch(rank) { case ADMIN -> "Administrator"; case MOD -> "Moderator"; default -> "Player"; };`
+- **Unnamed variables** (Java 22+): `catch (IOException _) { ... }`, `(_, event) -> ...`
+- **Flexible constructor bodies** (Java 25): validate args before `super(...)`
+- **Module import declarations** (Java 25): `import module java.base;`
+- **Scoped values** (Java 25): `ScopedValue` as a safer alternative to `ThreadLocal`
+- **Stream gatherers** (Java 24+): `stream.gather(Gatherers.windowFixed(10))`
 - **Text blocks**: For multiline strings `"""..."""`
-- **Virtual threads** (preview): For heavy I/O operations `Thread.ofVirtual().start(() -> ...)`
+- **Virtual threads**: For blocking I/O (DB/HTTP) `Thread.ofVirtual().start(() -> ...)` — never touch the Bukkit API from them; hop back with the scheduler
 - **SequencedCollection**: `list.getFirst()`, `list.getLast()`, `list.reversed()`
 
 ---
@@ -152,7 +160,7 @@ public final class MyPlugin extends JavaPlugin {
 name: MyPlugin
 version: '${version}'
 main: com.example.myplugin.MyPlugin
-api-version: '1.21.4'
+api-version: '26.3'
 description: Description
 author: AuthorName
 website: https://example.com
@@ -186,7 +194,7 @@ commands:
 name: MyPaperPlugin
 version: '1.0.0'
 main: com.example.myplugin.MyPlugin
-api-version: '1.21.4'
+api-version: '26.3'
 bootstrapper: com.example.myplugin.MyBootstrap
 loader: com.example.myplugin.MyLoader
 
@@ -1123,11 +1131,15 @@ team.addPlayer(player);
 ```java
 // build.gradle.kts
 plugins {
-    id("io.papermc.paperweight.userdev") version "2.0.0-beta.19"
+    id("io.papermc.paperweight.userdev") version "2.0.0-beta.24"
 }
 dependencies {
-    paperweight.paperDevBundle("1.21.4-R0.1-SNAPSHOT")
+    paperweight.paperDevBundle("26.3.build.+")
 }
+// 26.1+: server is unobfuscated — no reobf. Ship the Mojang-mapped jar:
+paperweight.reobfArtifactConfiguration =
+    io.papermc.paperweight.userdev.ReobfArtifactConfiguration.MOJANG_PRODUCTION
+// (remove any `tasks.assemble { dependsOn(reobfJar) }` from older builds)
 
 // Usage — Mojang-mapped names (1.20.5+)
 import net.minecraft.server.level.ServerPlayer;
@@ -1461,7 +1473,7 @@ public record DatabaseConfig(String type, String host, int port, String name, St
 | `IllegalPluginAccessException` in async | Bukkit API called from async thread | Return to main thread with `runTask()` |
 | PDC data disappearing | `BlockState.update()` not called | Call `state.update()` after block entity PDC changes |
 | Command tab-complete not working | Old Bukkit command system | Switch to Brigadier API |
-| `api-version` missing | Not specified in plugin.yml | Add `api-version: '1.21.4'`, otherwise legacy warning |
+| `api-version` missing | Not specified in plugin.yml | Add `api-version: '26.3'`, otherwise legacy warning |
 | Config special characters broken | Encoding issue | `filteringCharset = "UTF-8"` in Gradle, config files as UTF-8 |
 
 ---
@@ -2112,7 +2124,28 @@ public void onDamage(EntityDamageByEntityEvent event) {
 
 ---
 
-## 36. MINECRAFT 1.21.x VERSION CHANGES
+## 36. MINECRAFT VERSION CHANGES (1.21.x → 26.x)
+
+### New Versioning Scheme (26.1+)
+
+After 1.21.11, Minecraft switched to year-based versions (26.1, 26.2, 26.3, ...).
+Paper artifact versions changed accordingly:
+
+```
+≤ 1.21.11 : io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT   (no way to pin a build)
+≥ 26.1    : io.papermc.paper:paper-api:26.3.build.+            (latest build, Gradle)
+            io.papermc.paper:paper-api:26.3.build.252-stable   (pinned build)
+            Maven: <version>[26.3.build,)</version>
+api-version: '26.3'   (major.minor only; valid range 1.13 – 26.3)
+Java: 25+ required
+```
+
+**26.1+ breaking changes:**
+- Mojang ships an **unobfuscated** server jar → Paper no longer supports obfuscated (reobf'd) plugins.
+- paperweight-userdev reobfuscation does not work for 26.1+ dev bundles. Use
+  `ReobfArtifactConfiguration.MOJANG_PRODUCTION` and drop `reobfJar` task wiring.
+- Mojang-mapped plugins are **not** compatible with Spigot servers.
+- Always use the latest paperweight-userdev (2.0.0-beta.24 at time of writing); only the latest is supported.
 
 ### Protocol Versions
 
@@ -2123,6 +2156,7 @@ public void onDamage(EntityDamageByEntityEvent event) {
 1.21.3  → Protocol 768 (same)
 1.21.4  → Protocol 769
 1.21.5  → Protocol 770
+26.x    → check https://minecraft.wiki/w/Protocol_version_numbers
 ```
 
 ### Important API Changes Across Versions
@@ -2158,6 +2192,8 @@ public void onDamage(EntityDamageByEntityEvent event) {
 Paper 1.20.5+  → Mojang-mapped (CraftBukkit no longer relocated)
 Paper 1.21.4+  → Hardforked from Spigot (Spigot patches now independent)
                   Must use paperweight 2.x
+Paper 26.1+    → Unobfuscated server; no reobf, MOJANG_PRODUCTION output only
+                  Dev bundle: paperDevBundle("26.3.build.+")
 Paper <1.20.5  → Spigot-mapped (old obfuscation)
 ```
 
@@ -2444,7 +2480,7 @@ public void onBlockBreak(BlockBreakEvent event) {
 Client → Server connection flow:
 
 1. HANDSHAKE (Packet 0x00)
-   - Protocol Version (VarInt): 769 (1.21.4)
+   - Protocol Version (VarInt): e.g. 769 (1.21.4) — see minecraft.wiki/w/Protocol_version_numbers for 26.x
    - Server Address (String): play.example.net
    - Server Port (Unsigned Short): 25565
    - Next State (VarInt): 1=Status, 2=Login, 3=Transfer
@@ -2499,7 +2535,7 @@ public void onGrimFlag(FlagEvent event) {
 
 ---
 
-**Javadoc:** https://jd.papermc.io/paper/1.21.4/  
+**Javadoc:** https://jd.papermc.io/paper/26.3/  
 **Paper Docs:** https://docs.papermc.io/paper/dev/  
 **Adventure Docs:** https://docs.papermc.io/adventure/  
 **MiniMessage Viewer:** https://webui.advntr.dev/  
